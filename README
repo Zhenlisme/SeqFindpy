@@ -1,0 +1,30 @@
+usage: SeqFindPy [-h] -f FASTA [-k MATCHKEY] [-g GFF | -b BED] [-o OPTFILE]
+                 [-l LOCATION] [-n NCNUMBER] [-m {bedtools,selftools}]
+                 [-ep EXPRESSION_P] [-en EXPRESSION_N]
+
+To get the location and anotation of a sequence. First-writtern@20190716 by
+ZhenLi.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -f FASTA, --fasta FASTA
+                        The genome sequence,fasta format.
+  -k MATCHKEY, --matchkey MATCHKEY
+                        type in the key pattern.
+  -g GFF, --gff GFF     The anotation file,gff3 format.
+  -b BED, --bed BED     The anotation file,bed format.
+  -o OPTFILE, --optfile OPTFILE
+                        The filename of output result.
+  -l LOCATION, --location LOCATION
+                        The start and end of the sequence you wanna find.
+                        Example:205-225
+  -n NCNUMBER, --ncnumber NCNUMBER
+                        The sequence id.
+  -m {bedtools,selftools}, --method {bedtools,selftools}
+                        choice the method of intersecting method.
+  -ep EXPRESSION_P, --expression_p EXPRESSION_P
+                        The reqular expression applying on positive strand.
+                        Example:'ATCGAA{2,3}A'
+  -en EXPRESSION_N, --expression_n EXPRESSION_N
+                        The reqular expression applying on negative strand.
+                        Example:'ATCGAA{2,3}A'
