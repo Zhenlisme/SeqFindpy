@@ -1,21 +1,24 @@
-#!/share/users_home/dgwei/python3.6/Python-3.6.0/bin/python3
+#/home/zhluo/miniconda3/bin/python3
 import numpy as np
 from Bio import SeqIO
 import pandas as pd
-import argparse,os,re,gc
+import argparse,os,re,gc,sys
 
 parser=argparse.ArgumentParser(description="To get the location and anotation of a sequence. First-writtern@20190716 by ZhenLi.")
 parser.add_argument("-f","--fasta",required=True,type=str,help="The genome sequence,fasta format.")
-parser.add_argument("-g","--gff",type=str,default="",help="The anotation file,gff3 format.")
+parser.add_argument("-k","--matchkey",type=str,default="",help="type in the key pattern.")
+ano_group=parser.add_mutually_exclusive_group()
+ano_group.add_argument("-g","--gff",type=str,default="",help="The anotation file,gff3 format.")
+ano_group.add_argument("-b","--bed",type=str,default="",help="The anotation file,bed format.")
+
 parser.add_argument("-o","--optfile",type=str,default="",help="The filename of output result.")
 parser.add_argument("-l","--location",type=str,default="",help="The start and end of the sequence you wanna find. Example:205-225")
 parser.add_argument("-n","--ncnumber",type=str,default="",help="The sequence id.")
-
 parser.add_argument("-m","--method",type=str,default="bedtools",choices=["bedtools","selftools"],
                    help="choice the method of intersecting method.")
-group = parser.add_mutually_exclusive_group()
-group.add_argument("-p","--pattern",type=str,help="The sequence you wanna find. Example:'ATCGA'")
-group.add_argument("-ep","--expression",type=str,help="The reqular expression. Example:'ATCGAA{2,3}A'")
+
+parser.add_argument("-ep","--expression_p",type=str,default="",help="The reqular expression applying on positive strand. Example:'ATCGAA{2,3}A'")
+parser.add_argument("-en","--expression_n",type=str,default="",help="The reqular expression applying on negative strand. Example:'ATCGAA{2,3}A'")
 args=vars(parser.parse_args())
 
 def seqmatch(genome_dict,pattern,strand):
@@ -25,8 +28,9 @@ def seqmatch(genome_dict,pattern,strand):
     for key in genome_dict:
         for i in pattern.finditer(str(genome_dict[key])):
             seq=i.group()
-            print("\t".join([key,str(i.start()+1),str(i.end()),strand,seq]))
-            opline.append([key,i.start()+1,i.end(),seq])
+            sys.stdout.write("\t".join([key,str(i.start()+1),str(i.end()),strand,seq]))
+            sys.stdout.write("\n")
+            opline.append([key,i.start()+1,i.end(),strand,seq])
     return opline
 def bedtools_intersect(seqlocation,anotation):
     seqlocation.to_csv(os.path.abspath(".seqlocation"),header=False,index=False,sep="\t")
@@ -53,7 +57,7 @@ def selfmade_intersect(seqlocation,anotation):
                 seqnp=np.asarray([seqnp for i in range(len(df))])
                 opstrings=np.hstack((df.to_numpy(),seqnp))
                 opnp=np.vstack((opnp,opstrings))
-                [print("\t".join(str(x) for x in i)) for i in np.hstack((df.to_numpy(),seqnp)).tolist()]
+                [sys.stdout.write("\t".join(str(x) for x in i)+"\n") for i in np.hstack((df.to_numpy(),seqnp)).tolist()]
         opdf=pd.DataFrame(opnp).drop_duplicates()
         opdf.to_csv(os.path.abspath(args["optfile"]),header=False,index=False)
     else:
@@ -63,46 +67,48 @@ def selfmade_intersect(seqlocation,anotation):
             if len(df)!=0:
                 seqnp=seqlocation.iloc[idx,[1,2,3]].to_list()
                 seqnp=np.asarray([seqnp for i in range(len(df))])
-                [print("\t".join(str(x) for x in i)) for i in np.hstack((df.to_numpy(),seqnp)).tolist()]
+                [sys.stdout.write("\t".join(str(x) for x in i)+"\n") for i in np.hstack((df.to_numpy(),seqnp)).tolist()]
 
-def SeqLocation(genomefile,anotationfile,opfile):
-    genome_dict = {seq_record.id: seq_record.seq for seq_record in SeqIO.parse(os.path.abspath(genomefile), "fasta")}
+def SeqLocation(genomefile,opfile):
+    if args["matchkey"]:
+        keypattern=re.compile(args["matchkey"],re.I)
+        genome_dict = {re.findall(keypattern,seq_record.id)[0]:seq_record.seq for seq_record in SeqIO.parse(os.path.abspath(genomefile), "fasta")}
+    else:
+        genome_dict = {seq_record.id: seq_record.seq for seq_record in SeqIO.parse(os.path.abspath(genomefile), "fasta")}
+    if args["ncnumber"]:
+        genome_dict=genome_dict[args["ncnumber"]]
     if args["location"]:
         start,end=args["location"].split("-")
-        print(str(genome_dict[args["ncnumber"]])[int(start)-1:int(end)])
+        sys.stdout.write(str(genome_dict)[int(start)-1:int(end)]+"\n")
         exit(0)
-    complement_char={'A':"T","T":"A","C":"G","G":"C","a":"T","t":"A","c":"G","g":"C"}
-    if args["pattern"]:
-        if not re.fullmatch(r'\w+',args["pattern"]):
-           print("wrong pattern.")
-           exit(0)
-        complement_seq=[complement_char[i] for i in list(args["pattern"])]
-        complement_seq.reverse()
-        complement_seq="".join(complement_seq)
-        complementary_pattern=re.compile(complement_seq,re.I)
-        pattern=re.compile(args["pattern"],re.I)
-        seqlocation=pd.DataFrame(seqmatch(genome_dict,pattern,"positive")).append(
-                    pd.DataFrame(seqmatch(genome_dict,complementary_pattern,"negative")))
-        seqlocation.index=range(0,len(seqlocation.index))
-    else:
-        pattern=re.compile(args["expression"],re.I) if args["expression"]!="PQS" else re.compile("(GG.{1,7}?GG.{1,7}?GG.{1,7}?GG)|(CC.{1,7}?CC.{1,7}?CC.{1,7}?CC)")
+    if args["expression_p"]:
+        pattern=re.compile(args["expression_p"],re.I)
         seqlocation=pd.DataFrame(seqmatch(genome_dict,pattern,"positive"))
-    del genome_dict 
+    if args["expression_n"]:
+        pattern=re.compile(args["expression_n"],re.I)
+        if args["expression_p"]:
+            seqlocation=seqlocation.append(pd.DataFrame(seqmatch(genome_dict,pattern,"negative")))
+        else:
+            seqlocation=pd.DataFrame(seqmatch(genome_dict,pattern,"negative"))
+    del genome_dict
     gc.collect()
-    if not anotationfile:
+    sys.stdout.write("****"*71+"\n")
+    anolist=[]
+    if args["gff"]:
+        with open(os.path.abspath(args["gff"]),'r') as F:
+            for line in F:
+                if not re.match(r'^[#\s]',line):
+                    if line.split("\t")[2]!="region":
+                        anolist.append([line.split("\t")[0],line.split("\t")[3],line.split("\t")[4],
+                                        ";".join([line.split("\t")[2],line.split("\t")[6],line.rstrip().split("\t")[8]])])
+    elif args["bed"]:
+        with open(os.path.abspath(args["bed"]),'r') as F:
+            [anolist.append([line.split("\t")[0],line.split("\t")[1],line.split("\t")[2],";".join(line.rstrip().split("\t")[3:])]) for line in F]
+    else:
         if opfile:
             seqlocation.to_csv(os.path.abspath(opfile),header=False,index=False)
         exit(0)
-    anolist=[]
-    print("****"*71)
-    if args["ncnumber"]:
-        seqlocation=seqlocation.loc[seqlocation.iloc[:,0]==args["ncnumber"],]
-    with open(os.path.abspath(anotationfile),'r') as F:
-        for line in F:
-            if not re.match(r'^[#\s]',line):
-                if line.split("\t")[2]!="region":
-                    anolist.append([line.split("\t")[0],line.split("\t")[3],line.split("\t")[4],
-                                    ";".join([line.split("\t")[2],line.split("\t")[6],line.rstrip().split("\t")[8]])])
+
     anotation=pd.DataFrame(anolist)
     if args["method"]=="bedtools":
         bedtools_intersect(seqlocation,anotation)
@@ -110,4 +116,4 @@ def SeqLocation(genomefile,anotationfile,opfile):
         selfmade_intersect(seqlocation,anotation)
 
 if __name__=="__main__":
-    SeqLocation(genomefile=args["fasta"],anotationfile=args["gff"],opfile=args["optfile"])
+    SeqLocation(genomefile=args["fasta"],opfile=args["optfile"])
